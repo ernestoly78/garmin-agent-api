@@ -1,62 +1,57 @@
 import { getGarminData } from "./garmin.service";
-import { computeReadiness } from "../core/readiness";
-import { computeFatigue } from "../core/fatigue";
-import { saveMemory, getMemory } from "./memory.engine";
 
 export async function getDailyCoach() {
   const data = await getGarminData();
 
-  const readiness = computeReadiness(data);
-  const fatigue = computeFatigue(data);
+  if (!data) {
+    return {
+      summary: "Sin datos disponibles, usa sensaciones.",
+      state: {
+        readiness: "unknown",
+        fatigue: "unknown"
+      },
+      recommendation: "light_training"
+    };
+  }
 
-  const entry = {
-    hrv: data.hrv,
-    sleep: data.sleep_score,
-    load: data.training_load,
-  };
+  const readinessScore =
+    data.readiness?.result?.score ||
+    data.readiness?.score ||
+    50;
 
-  saveMemory(entry);
-  const memory = getMemory();
+  const sleepScore =
+    data.sleep?.result?.sleepScore ||
+    data.sleep?.sleepScore ||
+    60;
+
+  const hrv =
+    data.hrv?.result?.value ||
+    data.hrv?.value ||
+    40;
+
+  // 🧠 lógica simple pero potente
+  let state = "medium";
+  let recommendation = "moderate_training";
+
+  if (readinessScore > 70 && sleepScore > 70) {
+    state = "high";
+    recommendation = "hard_training";
+  } else if (readinessScore < 40 || sleepScore < 50) {
+    state = "low";
+    recommendation = "recovery";
+  }
 
   return {
-    date: new Date().toISOString(),
-
+    summary: `Readiness ${readinessScore}, sueño ${sleepScore}.`,
     state: {
-      readiness,
-      fatigue,
-      recovery: data.recovery_score,
+      readiness: state,
+      fatigue: state === "low" ? "high" : "low"
     },
-
     body_signals: {
-      hr: data.heart_rate_avg,
-      hrv: data.hrv,
-      sleep: data.sleep_score,
-      load: data.training_load,
+      readinessScore,
+      sleepScore,
+      hrv
     },
-
-    interpretation: {
-      summary: buildNarrative(readiness, fatigue),
-      recommendation: getRecommendation(readiness, fatigue),
-    },
-
-    memory
+    recommendation
   };
-}
-
-function buildNarrative(readiness: string, fatigue: string) {
-  if (readiness === "low") {
-    return "Sistema nervioso exigido. Prioriza recuperación.";
-  }
-
-  if (fatigue === "high") {
-    return "Fatiga acumulada. Mantén baja intensidad.";
-  }
-
-  return "Buen estado general. Puedes entrenar con control.";
-}
-
-function getRecommendation(readiness: string, fatigue: string) {
-  if (readiness === "low") return "recovery_day";
-  if (fatigue === "high") return "zone_2_only";
-  return "normal_training";
 }
