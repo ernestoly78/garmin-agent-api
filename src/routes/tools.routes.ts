@@ -1,14 +1,11 @@
-const cache: Record<string, any> = {};
-const CACHE_TTL = 60 * 5 * 1000; // 5 minutos
-
 import express, { Request, Response } from "express";
 import { callTool, listTools } from "../services/mcp.service";
 
-// 🔥 PEGA ESTO AQUÍ 👇
+const router = express.Router();
+
+// 🔥 CACHE SIMPLE EN MEMORIA
 const cache: Record<string, any> = {};
 const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
-
-const router = express.Router();
 
 // 🔍 listar tools
 router.get("/", async (_req: Request, res: Response) => {
@@ -21,7 +18,7 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-// ⚡ ejecutar tool (con logs completos)
+// ⚡ ejecutar tool (CON CACHE + LOGS)
 router.post("/call", async (req: Request, res: Response) => {
   try {
     const { name, arguments: args } = req.body;
@@ -33,7 +30,7 @@ router.post("/call", async (req: Request, res: Response) => {
     console.log("🧠 TOOL REQUEST:", name);
     console.log("📥 ARGS:", JSON.stringify(args, null, 2));
 
-    // 🔥 fecha robusta (ayer + ajuste LATAM)
+    // 🔥 fecha correcta (ayer + ajuste LATAM)
     const date = new Date();
     date.setHours(date.getHours() - 4);
     date.setDate(date.getDate() - 1);
@@ -47,6 +44,15 @@ router.post("/call", async (req: Request, res: Response) => {
 
     console.log("📅 FINAL ARGS:", enrichedArgs);
 
+    // 🔥 CACHE CHECK
+    const cacheKey = `${name}-${JSON.stringify(enrichedArgs)}`;
+
+    if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < CACHE_TTL) {
+      console.log("⚡ CACHE HIT");
+      return res.json(cache[cacheKey].data);
+    }
+
+    // 🔥 LLAMADA MCP
     const raw = await callTool(name, enrichedArgs);
 
     console.log("📦 RAW MCP RESPONSE:", JSON.stringify(raw, null, 2));
@@ -59,11 +65,18 @@ router.post("/call", async (req: Request, res: Response) => {
       console.log("🧾 RAW CONTENT:", content);
 
       if (content) {
-        try {
-          parsedResult = JSON.parse(content);
-        } catch {
-          // 🔥 si no es JSON válido, lo devolvemos como texto
-          parsedResult = { message: content };
+        // 🚨 detectar rate limit
+        if (content.includes("429")) {
+          parsedResult = {
+            error: "rate_limited",
+            message: "Garmin rate limit reached"
+          };
+        } else {
+          try {
+            parsedResult = JSON.parse(content);
+          } catch {
+            parsedResult = { message: content };
+          }
         }
       }
     } catch (e) {
@@ -73,10 +86,18 @@ router.post("/call", async (req: Request, res: Response) => {
 
     console.log("✅ FINAL RESULT:", JSON.stringify(parsedResult, null, 2));
 
-    res.json({
+    const responseData = {
       tool: name,
       result: parsedResult
-    });
+    };
+
+    // 🔥 GUARDAR EN CACHE
+    cache[cacheKey] = {
+      timestamp: Date.now(),
+      data: responseData
+    };
+
+    res.json(responseData);
 
   } catch (e: any) {
     console.error("❌ tools/call error FULL:", e);
@@ -84,7 +105,7 @@ router.post("/call", async (req: Request, res: Response) => {
   }
 });
 
-// 🧪 endpoint de debug (usable desde navegador)
+// 🧪 DEBUG DESDE NAVEGADOR
 router.get("/debug/:tool", async (req: Request, res: Response) => {
   try {
     const tool = req.params.tool;
