@@ -4,6 +4,10 @@ const CACHE_TTL = 60 * 5 * 1000; // 5 minutos
 import express, { Request, Response } from "express";
 import { callTool, listTools } from "../services/mcp.service";
 
+// 🔥 PEGA ESTO AQUÍ 👇
+const cache: Record<string, any> = {};
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+
 const router = express.Router();
 
 // 🔍 listar tools
