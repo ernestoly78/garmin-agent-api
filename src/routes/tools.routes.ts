@@ -3,9 +3,18 @@ import { callTool, listTools } from "../services/mcp.service";
 
 const router = express.Router();
 
-// 🔥 CACHE SIMPLE EN MEMORIA
-const cache: Record<string, any> = {};
-const CACHE_TTL = 5 * 60 * 1000; // 5 minutos
+// 🔒 CONTROL DE LLAMADAS
+let lastCallTime = 0;
+const MIN_INTERVAL = 3000; // 3 segundos entre llamadas
+
+// 🧠 TOOLS PERMITIDAS (controlamos al GPT)
+const ALLOWED_TOOLS = [
+  "get_training_readiness",
+  "get_sleep_data",
+  "get_hrv",
+  "get_daily_health_snapshot",
+  "get_last_activity"
+];
 
 // 🔍 listar tools
 router.get("/", async (_req: Request, res: Response) => {
@@ -18,7 +27,7 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-// ⚡ ejecutar tool (CON CACHE + LOGS)
+// ⚡ ejecutar tool (CONTROLADO)
 router.post("/call", async (req: Request, res: Response) => {
   try {
     const { name, arguments: args } = req.body;
@@ -28,48 +37,61 @@ router.post("/call", async (req: Request, res: Response) => {
     }
 
     console.log("🧠 TOOL REQUEST:", name);
-    console.log("📥 ARGS:", JSON.stringify(args, null, 2));
 
-    // 🔥 fecha correcta (ayer + ajuste LATAM)
+    // 🔒 WHITELIST
+    if (!ALLOWED_TOOLS.includes(name)) {
+      return res.json({
+        tool: name,
+        result: {
+          error: "not_allowed",
+          message: "Tool not allowed for performance reasons"
+        }
+      });
+    }
+
+    // 🔒 RATE LIMIT
+    const now = Date.now();
+    if (now - lastCallTime < MIN_INTERVAL) {
+      return res.json({
+        tool: name,
+        result: {
+          error: "rate_limited",
+          message: "Too many requests, try again in a few seconds"
+        }
+      });
+    }
+
+    lastCallTime = now;
+
+    // 📅 usar AYER (clave para Garmin)
     const date = new Date();
-    date.setHours(date.getHours() - 4);
     date.setDate(date.getDate() - 1);
 
     const enrichedArgs = {
       date: date.toISOString().slice(0, 10),
-      startDate: date.toISOString().slice(0, 10),
-      endDate: date.toISOString().slice(0, 10),
       ...(args || {})
     };
 
-    console.log("📅 FINAL ARGS:", enrichedArgs);
+    console.log("📅 ARGS:", enrichedArgs);
 
-    // 🔥 CACHE CHECK
-    const cacheKey = `${name}-${JSON.stringify(enrichedArgs)}`;
-
-    if (cache[cacheKey] && Date.now() - cache[cacheKey].timestamp < CACHE_TTL) {
-      console.log("⚡ CACHE HIT");
-      return res.json(cache[cacheKey].data);
-    }
-
-    // 🔥 LLAMADA MCP
+    // 🔥 LLAMADA REAL AL MCP
     const raw = await callTool(name, enrichedArgs);
 
-    console.log("📦 RAW MCP RESPONSE:", JSON.stringify(raw, null, 2));
+    console.log("📦 RAW MCP:", JSON.stringify(raw, null, 2));
 
     let parsedResult: any = raw;
 
     try {
       const content = raw?.content?.[0]?.text;
 
-      console.log("🧾 RAW CONTENT:", content);
-
       if (content) {
-        // 🚨 detectar rate limit
+        console.log("🧾 CONTENT:", content);
+
+        // 🚨 GARMIN RATE LIMIT
         if (content.includes("429")) {
           parsedResult = {
-            error: "rate_limited",
-            message: "Garmin rate limit reached"
+            error: "garmin_rate_limit",
+            message: "Garmin is temporarily limiting requests"
           };
         } else {
           try {
@@ -81,37 +103,28 @@ router.post("/call", async (req: Request, res: Response) => {
       }
     } catch (e) {
       console.error("⚠️ PARSE ERROR:", e);
-      parsedResult = { error: "parse_error", raw };
+      parsedResult = { error: "parse_error" };
     }
 
-    console.log("✅ FINAL RESULT:", JSON.stringify(parsedResult, null, 2));
+    console.log("✅ FINAL RESULT:", parsedResult);
 
-    const responseData = {
+    res.json({
       tool: name,
       result: parsedResult
-    };
-
-    // 🔥 GUARDAR EN CACHE
-    cache[cacheKey] = {
-      timestamp: Date.now(),
-      data: responseData
-    };
-
-    res.json(responseData);
+    });
 
   } catch (e: any) {
-    console.error("❌ tools/call error FULL:", e);
+    console.error("❌ tools/call error:", e);
     res.status(500).json({ error: e.message });
   }
 });
 
-// 🧪 DEBUG DESDE NAVEGADOR
+// 🧪 DEBUG DESDE NAVEGADOR (NO RATE LIMIT)
 router.get("/debug/:tool", async (req: Request, res: Response) => {
   try {
     const tool = req.params.tool;
 
     const date = new Date();
-    date.setHours(date.getHours() - 4);
     date.setDate(date.getDate() - 1);
 
     const args = {
