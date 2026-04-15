@@ -1,26 +1,28 @@
-const MCP_URL = process.env.MCP_URL || "https://TU-MCP.onrender.com/mcp";
+const MCP_URL = process.env.MCP_URL!;
 
 export async function getGarminData() {
   const response = await fetch(MCP_URL, {
     method: "POST",
     headers: {
-      "Content-Type": "application/json",
+      "Content-Type": "application/json"
     },
-
     body: JSON.stringify({
-      action: "get_daily_summary"
-    }),
+      jsonrpc: "2.0",
+      id: 1,
+      method: "tools/list"
+    })
   });
 
-  const result = await response.json();
+  const data = await response.json();
 
-  // 🔄 Mapeo MCP → Coach API
+  console.log("MCP RESPONSE:", data);
+
   return {
-    heart_rate_avg: result.heart_rate_avg,
-    hrv: result.hrv,
-    sleep_score: result.sleep_score,
-    training_load: result.training_load,
-    recovery_score: result.recovery_score,
-    resting_hr: result.resting_hr
+    heart_rate_avg: 65,
+    hrv: 40,
+    sleep_score: 75,
+    training_load: 500,
+    recovery_score: 60,
+    resting_hr: 60
   };
 }
