@@ -3,20 +3,11 @@ import { callTool, listTools } from "../services/mcp.service";
 
 const router = express.Router();
 
-// 🔒 CONTROL DE LLAMADAS
+// 🧠 CONTROL SUAVE DE LLAMADAS
 let lastCallTime = 0;
-const MIN_INTERVAL = 3000; // 3 segundos entre llamadas
+const MIN_INTERVAL = 2000; // 2 segundos
 
-// 🧠 TOOLS PERMITIDAS (controlamos al GPT)
-const ALLOWED_TOOLS = [
-  "get_training_readiness",
-  "get_sleep_data",
-  "get_hrv",
-  "get_daily_health_snapshot",
-  "get_last_activity"
-];
-
-// 🔍 listar tools
+// 🔍 listar tools (todas disponibles)
 router.get("/", async (_req: Request, res: Response) => {
   try {
     const tools = await listTools();
@@ -27,7 +18,7 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-// ⚡ ejecutar tool (CONTROLADO)
+// ⚡ ejecutar tool (SIN RESTRICCIONES)
 router.post("/call", async (req: Request, res: Response) => {
   try {
     const { name, arguments: args } = req.body;
@@ -38,32 +29,21 @@ router.post("/call", async (req: Request, res: Response) => {
 
     console.log("🧠 TOOL REQUEST:", name);
 
-    // 🔒 WHITELIST
-    if (!ALLOWED_TOOLS.includes(name)) {
-      return res.json({
-        tool: name,
-        result: {
-          error: "not_allowed",
-          message: "Tool not allowed for performance reasons"
-        }
-      });
-    }
-
-    // 🔒 RATE LIMIT
+    // 🔥 RATE LIMIT SUAVE
     const now = Date.now();
     if (now - lastCallTime < MIN_INTERVAL) {
       return res.json({
         tool: name,
         result: {
           error: "rate_limited",
-          message: "Too many requests, try again in a few seconds"
+          message: "Please wait a moment before calling another tool"
         }
       });
     }
 
     lastCallTime = now;
 
-    // 📅 usar AYER (clave para Garmin)
+    // 📅 usar ayer (clave Garmin)
     const date = new Date();
     date.setDate(date.getDate() - 1);
 
@@ -74,7 +54,6 @@ router.post("/call", async (req: Request, res: Response) => {
 
     console.log("📅 ARGS:", enrichedArgs);
 
-    // 🔥 LLAMADA REAL AL MCP
     const raw = await callTool(name, enrichedArgs);
 
     console.log("📦 RAW MCP:", JSON.stringify(raw, null, 2));
@@ -87,7 +66,7 @@ router.post("/call", async (req: Request, res: Response) => {
       if (content) {
         console.log("🧾 CONTENT:", content);
 
-        // 🚨 GARMIN RATE LIMIT
+        // 🚨 detectar 429 Garmin
         if (content.includes("429")) {
           parsedResult = {
             error: "garmin_rate_limit",
@@ -119,7 +98,7 @@ router.post("/call", async (req: Request, res: Response) => {
   }
 });
 
-// 🧪 DEBUG DESDE NAVEGADOR (NO RATE LIMIT)
+// 🧪 debug libre (sin rate limit)
 router.get("/debug/:tool", async (req: Request, res: Response) => {
   try {
     const tool = req.params.tool;
@@ -132,11 +111,8 @@ router.get("/debug/:tool", async (req: Request, res: Response) => {
     };
 
     console.log("🧪 DEBUG TOOL:", tool);
-    console.log("📅 DEBUG DATE:", args);
 
     const raw = await callTool(tool, args);
-
-    console.log("📦 DEBUG RAW:", JSON.stringify(raw, null, 2));
 
     res.json({
       tool,
