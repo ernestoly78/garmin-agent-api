@@ -25,12 +25,25 @@ router.post("/call", async (req, res) => {
       return res.status(400).json({ error: "Tool name is required" });
     }
 
-    const result = await callTool(name, args || {});
+const raw = await callTool(name, enrichedArgs);
 
-    res.json({
-      tool: name,
-      result
-    });
+// 🔥 EXTRAER contenido real del MCP
+let parsedResult = raw;
+
+try {
+  const content = raw?.content?.[0]?.text;
+
+  if (content) {
+    parsedResult = JSON.parse(content);
+  }
+} catch (e) {
+  console.error("⚠️ parse error, using raw result");
+}
+
+res.json({
+  tool: name,
+  result: parsedResult
+});
 
   } catch (e: any) {
     console.error("❌ tools/call error:", e);
