@@ -1,32 +1,55 @@
-const MCP_URL = process.env.MCP_URL!;
+import { callTool } from "./mcp.service";
+
+let cache: any = null;
+let lastFetch = 0;
+
+const CACHE_TTL = 10 * 60 * 1000; // 10 minutos
+
+function getYesterday() {
+  const d = new Date();
+  d.setDate(d.getDate() - 1);
+  return d.toISOString().slice(0, 10);
+}
 
 export async function getGarminData() {
-  console.log("calling MCP...");
+  const now = Date.now();
 
-  const response = await fetch(MCP_URL, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      jsonrpc: "2.0",
-      id: 1,
-      method: "tools/list"
-    })
-  });
+  if (cache && now - lastFetch < CACHE_TTL) {
+    console.log("⚡ USING GARMIN CACHE");
+    return cache;
+  }
 
-  console.log("status MCP:", response.status);
+  console.log("🔥 FETCHING GARMIN DATA");
 
-  const data = await response.json();
+  const date = getYesterday();
 
-  console.log("response MCP:", JSON.stringify(data, null, 2));
+  try {
+    // 🔥 intentamos varias fuentes
+    const readiness = await callTool("get_training_readiness", { date });
+    const sleep = await callTool("get_sleep_data", { date });
+    const hrv = await callTool("get_hrv", { date });
 
-  return {
-    heart_rate_avg: 65,
-    hrv: 40,
-    sleep_score: 75,
-    training_load: 500,
-    recovery_score: 60,
-    resting_hr: 60
-  };
+    const data = {
+      readiness,
+      sleep,
+      hrv,
+      date
+    };
+
+    cache = data;
+    lastFetch = now;
+
+    return data;
+
+  } catch (e) {
+    console.error("❌ GARMIN FETCH FAILED:", e);
+
+    // 🔥 fallback a cache anterior
+    if (cache) {
+      console.log("🧠 USING FALLBACK CACHE");
+      return cache;
+    }
+
+    return null;
+  }
 }
