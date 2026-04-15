@@ -1,4 +1,21 @@
-router.post("/call", async (req, res) => {
+import express, { Request, Response } from "express";
+import { callTool, listTools } from "../services/mcp.service";
+
+const router = express.Router();
+
+// 🔍 listar tools
+router.get("/", async (_req: Request, res: Response) => {
+  try {
+    const tools = await listTools();
+    res.json({ tools });
+  } catch (e: any) {
+    console.error("❌ tools/list error:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// ⚡ ejecutar tool
+router.post("/call", async (req: Request, res: Response) => {
   try {
     const { name, arguments: args } = req.body;
 
@@ -6,7 +23,7 @@ router.post("/call", async (req, res) => {
       return res.status(400).json({ error: "Tool name is required" });
     }
 
-    // 🔥 FIX CLAVE: definir enrichedArgs
+    // 🔥 auto fecha
     const today = new Date().toISOString().slice(0, 10);
 
     const enrichedArgs = {
@@ -41,3 +58,5 @@ router.post("/call", async (req, res) => {
     res.status(500).json({ error: e.message });
   }
 });
+
+export default router;
