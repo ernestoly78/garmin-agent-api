@@ -1,7 +1,10 @@
 import express from "express";
+import coachRoutes from "./routes/coach.routes";
 
 const app = express();
 app.use(express.json());
+
+app.use("/coach", coachRoutes);
 
 app.get("/", (_, res) => {
   res.json({ status: "garmin-agent-api online 🧠" });
