@@ -18,7 +18,9 @@ router.get("/", async (_req, res) => {
 router.post("/call", async (req, res) => {
   try {
     const { name, arguments: args } = req.body;
-
+    // 🔥 auto-inyectar fecha
+    const today = new Date().toISOString().slice(0, 10);
+    
     if (!name) {
       return res.status(400).json({ error: "Tool name is required" });
     }
