@@ -1,0 +1,20 @@
+{
+  "name": "garmin-agent-api",
+  "version": "1.0.0",
+  "description": "Garmin AI Coach API",
+  "main": "dist/index.js",
+  "scripts": {
+    "dev": "ts-node src/index.ts",
+    "build": "tsc",
+    "start": "node dist/index.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2"
+  },
+  "devDependencies": {
+    "typescript": "^5.3.3",
+    "ts-node": "^10.9.1",
+    "@types/node": "^20.11.30",
+    "@types/express": "^4.17.21"
+  }
+}
