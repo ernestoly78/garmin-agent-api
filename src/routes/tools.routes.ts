@@ -14,7 +14,7 @@ router.get("/", async (_req: Request, res: Response) => {
   }
 });
 
-// ⚡ ejecutar tool
+// ⚡ ejecutar tool (con logs completos)
 router.post("/call", async (req: Request, res: Response) => {
   try {
     const { name, arguments: args } = req.body;
@@ -23,30 +23,48 @@ router.post("/call", async (req: Request, res: Response) => {
       return res.status(400).json({ error: "Tool name is required" });
     }
 
-    // 🔥 auto fecha
-    const today = new Date().toISOString().slice(0, 10);
+    console.log("🧠 TOOL REQUEST:", name);
+    console.log("📥 ARGS:", JSON.stringify(args, null, 2));
+
+    // 🔥 fecha robusta (ayer + ajuste LATAM)
+    const date = new Date();
+    date.setHours(date.getHours() - 4);
+    date.setDate(date.getDate() - 1);
 
     const enrichedArgs = {
-      date: today,
-      startDate: today,
-      endDate: today,
+      date: date.toISOString().slice(0, 10),
+      startDate: date.toISOString().slice(0, 10),
+      endDate: date.toISOString().slice(0, 10),
       ...(args || {})
     };
 
+    console.log("📅 FINAL ARGS:", enrichedArgs);
+
     const raw = await callTool(name, enrichedArgs);
 
-    // 🔥 parsear respuesta MCP
-    let parsedResult = raw;
+    console.log("📦 RAW MCP RESPONSE:", JSON.stringify(raw, null, 2));
+
+    let parsedResult: any = raw;
 
     try {
       const content = raw?.content?.[0]?.text;
 
+      console.log("🧾 RAW CONTENT:", content);
+
       if (content) {
-        parsedResult = JSON.parse(content);
+        try {
+          parsedResult = JSON.parse(content);
+        } catch {
+          // 🔥 si no es JSON válido, lo devolvemos como texto
+          parsedResult = { message: content };
+        }
       }
     } catch (e) {
-      console.error("⚠️ parse error, using raw result");
+      console.error("⚠️ PARSE ERROR:", e);
+      parsedResult = { error: "parse_error", raw };
     }
+
+    console.log("✅ FINAL RESULT:", JSON.stringify(parsedResult, null, 2));
 
     res.json({
       tool: name,
@@ -54,7 +72,38 @@ router.post("/call", async (req: Request, res: Response) => {
     });
 
   } catch (e: any) {
-    console.error("❌ tools/call error:", e);
+    console.error("❌ tools/call error FULL:", e);
+    res.status(500).json({ error: e.message });
+  }
+});
+
+// 🧪 endpoint de debug (usable desde navegador)
+router.get("/debug/:tool", async (req: Request, res: Response) => {
+  try {
+    const tool = req.params.tool;
+
+    const date = new Date();
+    date.setHours(date.getHours() - 4);
+    date.setDate(date.getDate() - 1);
+
+    const args = {
+      date: date.toISOString().slice(0, 10)
+    };
+
+    console.log("🧪 DEBUG TOOL:", tool);
+    console.log("📅 DEBUG DATE:", args);
+
+    const raw = await callTool(tool, args);
+
+    console.log("📦 DEBUG RAW:", JSON.stringify(raw, null, 2));
+
+    res.json({
+      tool,
+      raw
+    });
+
+  } catch (e: any) {
+    console.error("❌ DEBUG ERROR:", e);
     res.status(500).json({ error: e.message });
   }
 });
